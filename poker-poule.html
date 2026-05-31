@@ -149,6 +149,7 @@
     <div class="suit-row"><span>♠</span><span>♥</span><span>♦</span><span>♣</span><span>♠</span></div>
     <h1>Poker Poule</h1>
     <div class="tagline">PKVT 2026 &nbsp;·&nbsp; Voorspel de top 3 — wie wint de pot?</div>
+    <div id="sync-status" style="font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;min-height:18px;margin-top:8px;transition:color 0.3s"></div>
     <div class="chip-decoration">
       <div class="chip"></div><div class="chip"></div><div class="chip"></div><div class="chip"></div><div class="chip"></div>
     </div>
@@ -319,16 +320,27 @@
     } catch(e) { console.error('Create bin error', e); }
   }
 
+  function setSyncStatus(status) {
+    var el = document.getElementById('sync-status');
+    if (!el) return;
+    if (status === 'saving') { el.textContent = '⏳ Opslaan...'; el.style.color = 'var(--gold)'; }
+    else if (status === 'ok') { el.textContent = '✓ Opgeslagen'; el.style.color = 'var(--green-light)'; }
+    else { el.textContent = '✕ Fout bij opslaan'; el.style.color = '#e05555'; }
+  }
+
   function save() {
-    // Debounce saves to avoid rate limits
     clearTimeout(saveTimer);
+    setSyncStatus('saving');
     saveTimer = setTimeout(doSave, 600);
   }
 
   async function doSave() {
-    if (!JSONBIN_BIN_ID) { await createBin(); return; }
+    if (!JSONBIN_BIN_ID) {
+      await createBin();
+      if (!JSONBIN_BIN_ID) { setSyncStatus('error'); return; }
+    }
     try {
-      await fetch(JSONBIN_BASE + '/b/' + JSONBIN_BIN_ID, {
+      var resp = await fetch(JSONBIN_BASE + '/b/' + JSONBIN_BIN_ID, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -336,7 +348,18 @@
         },
         body: JSON.stringify(state)
       });
-    } catch(e) { console.error('Save error', e); }
+      var data = await resp.json();
+      if (data && data.record) {
+        setSyncStatus('ok');
+        setTimeout(function() { setSyncStatus(''); }, 2000);
+      } else {
+        console.error('Save response unexpected:', data);
+        setSyncStatus('error');
+      }
+    } catch(e) {
+      console.error('Save error', e);
+      setSyncStatus('error');
+    }
   }
 
   // ===== TOAST =====
@@ -454,6 +477,7 @@
     if (!p1 || !p2 || !p3) { toast('Vul alle 3 posities in!', true); return; }
     if (p1 === p2 || p1 === p3 || p2 === p3) { toast('Kies 3 verschillende spelers!', true); return; }
     state.result = { p1: p1, p2: p2, p3: p3 };
+    save();
     toast('Uitslag opgeslagen! 🏆');
     render();
   }
