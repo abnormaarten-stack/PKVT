@@ -256,23 +256,39 @@
   async function loadState() {
     showLoading(true);
     try {
-      // Try to find existing bin by name tag
-      var resp = await fetch(JSONBIN_BASE + '/b?tag=pkvt2026', {
-        headers: { 'X-Master-Key': JSONBIN_KEY }
-      });
-      var data = await resp.json();
-      if (data && Array.isArray(data) && data.length > 0) {
-        JSONBIN_BIN_ID = data[0].record.id || (data[0].metadata && data[0].metadata.id);
-        // Fetch actual bin content
+      // Check localStorage for cached bin ID first
+      var cachedId = localStorage.getItem('pkvt2026_bin_id');
+      if (cachedId) {
+        JSONBIN_BIN_ID = cachedId;
         var binResp = await fetch(JSONBIN_BASE + '/b/' + JSONBIN_BIN_ID + '/latest', {
           headers: { 'X-Master-Key': JSONBIN_KEY }
         });
         var binData = await binResp.json();
         if (binData && binData.record) {
           state = binData.record;
+          showLoading(false);
+          render();
+          return;
+        }
+      }
+      // No cached ID — search by tag
+      var resp = await fetch(JSONBIN_BASE + '/b?tag=pkvt2026', {
+        headers: { 'X-Master-Key': JSONBIN_KEY }
+      });
+      var data = await resp.json();
+      if (data && Array.isArray(data) && data.length > 0) {
+        // Find the metadata id — JSONBin returns it differently per plan
+        var meta = data[0].metadata || data[0].record || {};
+        JSONBIN_BIN_ID = meta.id || data[0].id;
+        if (JSONBIN_BIN_ID) {
+          localStorage.setItem('pkvt2026_bin_id', JSONBIN_BIN_ID);
+          var binResp2 = await fetch(JSONBIN_BASE + '/b/' + JSONBIN_BIN_ID + '/latest', {
+            headers: { 'X-Master-Key': JSONBIN_KEY }
+          });
+          var binData2 = await binResp2.json();
+          if (binData2 && binData2.record) state = binData2.record;
         }
       } else {
-        // No bin yet, create one
         await createBin();
       }
     } catch(e) {
@@ -290,12 +306,16 @@
           'Content-Type': 'application/json',
           'X-Master-Key': JSONBIN_KEY,
           'X-Bin-Name': 'pkvt2026',
-          'X-Tag': 'pkvt2026'
+          'X-Tag': 'pkvt2026',
+          'X-Bin-Private': 'true'
         },
         body: JSON.stringify(state)
       });
       var data = await resp.json();
-      if (data && data.metadata) JSONBIN_BIN_ID = data.metadata.id;
+      if (data && data.metadata && data.metadata.id) {
+        JSONBIN_BIN_ID = data.metadata.id;
+        localStorage.setItem('pkvt2026_bin_id', JSONBIN_BIN_ID);
+      }
     } catch(e) { console.error('Create bin error', e); }
   }
 
