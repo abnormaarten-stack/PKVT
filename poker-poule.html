@@ -228,7 +228,9 @@
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="togglePredictions()">🔒 Voorspellingen Sluiten/Openen</button>
         <button class="btn btn-danger" onclick="clearAll()">🗑 Alles Wissen</button>
+        <button class="btn btn-ghost" onclick="testFirebase()">🔌 Test Verbinding</button>
       </div>
+      <div id="debug-output" style="margin-top:16px; font-family:'DM Mono',monospace; font-size:12px; line-height:1.8; display:none; background:rgba(0,0,0,0.3); padding:14px; border-radius:8px; border:1px solid var(--border); word-break:break-all;"></div>
     </div>
   </div>
 </div>
@@ -475,8 +477,22 @@
     }
     var badges = [{cls:'pos-1',label:'1e',emoji:'🥇'},{cls:'pos-2',label:'2e',emoji:'🥈'},{cls:'pos-3',label:'3e',emoji:'🥉'}];
     slots.innerHTML = badges.map(function(b, i) {
-      return '<div class="pred-slot"><div class="position-badge ' + b.cls + '">' + (i+1) + '</div><div><label style="margin:0 0 6px">' + b.emoji + ' ' + b.label + ' Plaats</label><select id="pred-p' + (i+1) + '"><option value="">-- Kies speler --</option>' + state.players.map(function(p) { return '<option value="' + p + '">' + p + '</option>'; }).join('') + '</select></div></div>';
+      return '<div class="pred-slot"><div class="position-badge ' + b.cls + '">' + (i+1) + '</div><div><label style="margin:0 0 6px">' + b.emoji + ' ' + b.label + ' Plaats</label><select id="pred-p' + (i+1) + '" onchange="filterPredSelects()"><option value="">-- Kies speler --</option>' + state.players.map(function(p) { return '<option value="' + p + '">' + p + '</option>'; }).join('') + '</select></div></div>';
     }).join('');
+  }
+
+  function filterPredSelects() {
+    var s1 = document.getElementById('pred-p1');
+    var s2 = document.getElementById('pred-p2');
+    var s3 = document.getElementById('pred-p3');
+    if (!s1 || !s2 || !s3) return;
+    var v1 = s1.value, v2 = s2.value, v3 = s3.value;
+    [s1, s2, s3].forEach(function(sel, idx) {
+      var others = [v1, v2, v3].filter(function(_, i) { return i !== idx; });
+      Array.from(sel.options).forEach(function(opt) {
+        opt.disabled = opt.value !== '' && others.indexOf(opt.value) >= 0;
+      });
+    });
   }
 
   function submitPrediction() {
@@ -568,6 +584,40 @@
         return '<tr class="' + (isWinner ? 'winner-row' : '') + '"><td><span class="rank-num">' + (isWinner ? '\uD83C\uDFC6' : i+1) + '</span></td><td><div>' + pr.name + '</div><div class="prediction-detail" style="margin-top:4px">' + predDetail + '</div></td><td></td><td><span class="pts-badge ' + (pr.pts === 0 ? 'pts-zero' : '') + '">' + pr.pts + '</span></td></tr>';
       }).join('') +
       '</tbody></table>' + (state.result ? '<div class="info-box" style="margin-top:16px; font-size:11px">\uD83D\uDFE2 Groen = exact raak (3 pts) \u00A0\u00B7\u00A0 \uD83D\uDFE1 Geel = in top 3, verkeerde plek (1 pt)</div>' : '');
+  }
+
+  async function testFirebase() {
+    var out = document.getElementById('debug-output');
+    out.style.display = 'block';
+    out.textContent = '⏳ Verbinding testen...';
+    try {
+      // Test write
+      var writeResp = await fetch(FIREBASE_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ping: true })
+      });
+      var writeData = await writeResp.json();
+      out.textContent += '\n✓ Write response: ' + JSON.stringify(writeData);
+
+      // Test read
+      var readResp = await fetch(FIREBASE_URL);
+      var readData = await readResp.json();
+      out.textContent += '\n✓ Read response: ' + JSON.stringify(readData);
+
+      // Test full state write
+      var stateResp = await fetch(FIREBASE_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+      });
+      var stateData = await stateResp.json();
+      out.textContent += '\n✓ State write: ' + JSON.stringify(stateData).substring(0, 80);
+      out.style.color = 'var(--green-light)';
+    } catch(e) {
+      out.textContent += '\n✕ Fout: ' + e.message;
+      out.style.color = '#e05555';
+    }
   }
 
   function render() {
