@@ -241,9 +241,7 @@
   var pendingDeleteName = null;
   var editingName = null;
 
-  var JSONBIN_KEY = '$2a$10$/fUMgCFEjermhwUwRdoJSOiFDO90bQ7TMWIZY85dBdYwWV4p9t.MW';
-  var JSONBIN_BIN_ID = null; // filled after first save
-  var JSONBIN_BASE = 'https://api.jsonbin.io/v3';
+  var FIREBASE_URL = 'https://pkvt2026-default-rtdb.europe-west1.firebasedatabase.app/state.json';
 
   var DEFAULT_STATE = { players: [], predictions: [], result: null, open: true };
   var state = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -257,67 +255,16 @@
   async function loadState() {
     showLoading(true);
     try {
-      // Check localStorage for cached bin ID first
-      var cachedId = localStorage.getItem('pkvt2026_bin_id');
-      if (cachedId) {
-        JSONBIN_BIN_ID = cachedId;
-        var binResp = await fetch(JSONBIN_BASE + '/b/' + JSONBIN_BIN_ID + '/latest', {
-          headers: { 'X-Master-Key': JSONBIN_KEY }
-        });
-        var binData = await binResp.json();
-        if (binData && binData.record) {
-          state = binData.record;
-          showLoading(false);
-          render();
-          return;
-        }
-      }
-      // No cached ID — search by tag
-      var resp = await fetch(JSONBIN_BASE + '/b?tag=pkvt2026', {
-        headers: { 'X-Master-Key': JSONBIN_KEY }
-      });
+      var resp = await fetch(FIREBASE_URL);
       var data = await resp.json();
-      if (data && Array.isArray(data) && data.length > 0) {
-        // Find the metadata id — JSONBin returns it differently per plan
-        var meta = data[0].metadata || data[0].record || {};
-        JSONBIN_BIN_ID = meta.id || data[0].id;
-        if (JSONBIN_BIN_ID) {
-          localStorage.setItem('pkvt2026_bin_id', JSONBIN_BIN_ID);
-          var binResp2 = await fetch(JSONBIN_BASE + '/b/' + JSONBIN_BIN_ID + '/latest', {
-            headers: { 'X-Master-Key': JSONBIN_KEY }
-          });
-          var binData2 = await binResp2.json();
-          if (binData2 && binData2.record) state = binData2.record;
-        }
-      } else {
-        await createBin();
+      if (data && data.players !== undefined) {
+        state = data;
       }
     } catch(e) {
       console.error('Load error', e);
     }
     showLoading(false);
     render();
-  }
-
-  async function createBin() {
-    try {
-      var resp = await fetch(JSONBIN_BASE + '/b', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Master-Key': JSONBIN_KEY,
-          'X-Bin-Name': 'pkvt2026',
-          'X-Tag': 'pkvt2026',
-          'X-Bin-Private': 'true'
-        },
-        body: JSON.stringify(state)
-      });
-      var data = await resp.json();
-      if (data && data.metadata && data.metadata.id) {
-        JSONBIN_BIN_ID = data.metadata.id;
-        localStorage.setItem('pkvt2026_bin_id', JSONBIN_BIN_ID);
-      }
-    } catch(e) { console.error('Create bin error', e); }
   }
 
   function setSyncStatus(status) {
@@ -335,25 +282,17 @@
   }
 
   async function doSave() {
-    if (!JSONBIN_BIN_ID) {
-      await createBin();
-      if (!JSONBIN_BIN_ID) { setSyncStatus('error'); return; }
-    }
     try {
-      var resp = await fetch(JSONBIN_BASE + '/b/' + JSONBIN_BIN_ID, {
+      var resp = await fetch(FIREBASE_URL, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Master-Key': JSONBIN_KEY
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(state)
       });
       var data = await resp.json();
-      if (data && data.record) {
+      if (data && data.players !== undefined) {
         setSyncStatus('ok');
         setTimeout(function() { setSyncStatus(''); }, 2000);
       } else {
-        console.error('Save response unexpected:', data);
         setSyncStatus('error');
       }
     } catch(e) {
